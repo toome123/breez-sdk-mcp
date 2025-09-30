@@ -49,6 +49,8 @@ export class ConfigManager {
       await this.saveConfig(this.config);
     }
 
+    // Apply environment overrides (e.g., when env vars change after config.enc was created)
+    this.config = await this.applyEnvOverrides(this.config);
     return this.config;
   }
 
@@ -63,6 +65,34 @@ export class ConfigManager {
     fs.writeFileSync(this.configPath, encryptedData, 'utf8');
 
     this.config = config;
+  }
+
+  private async applyEnvOverrides(current: BreezConfig): Promise<BreezConfig> {
+    let changed = false;
+
+    const envSdkKey = process.env.BREEZ_API_KEY?.trim();
+    if (envSdkKey && envSdkKey !== current.sdkKey) {
+      current = { ...current, sdkKey: envSdkKey };
+      changed = true;
+    }
+
+    const envNetwork = process.env.NETWORK as 'mainnet' | 'testnet' | undefined;
+    if (envNetwork && envNetwork !== current.network) {
+      current = { ...current, network: envNetwork };
+      changed = true;
+    }
+
+    const envMnemonic = process.env.MNEMONIC?.trim();
+    if (envMnemonic && envMnemonic !== current.mnemonic) {
+      current = { ...current, mnemonic: envMnemonic };
+      changed = true;
+    }
+
+    if (changed) {
+      await this.saveConfig(current);
+    }
+
+    return current;
   }
 
   private async decryptConfig(): Promise<BreezConfig> {
