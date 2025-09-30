@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  ToolSchema,
+  Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { BreezService } from './services/BreezService.js';
 
@@ -119,7 +119,7 @@ export class BreezMCPServer {
               required: ['message', 'signature', 'publicKey'],
             },
           },
-        ] as ToolSchema[],
+        ] as Tool[],
       };
     });
 
