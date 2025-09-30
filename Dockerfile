@@ -8,8 +8,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install dependencies (include dev dependencies for TypeScript build)
+RUN npm ci && npm cache clean --force
 
 # Copy source code
 COPY src/ ./src/
@@ -36,8 +36,7 @@ RUN npm ci --only=production && npm cache clean --force
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy environment example file
-COPY .env.example ./
+# (Optional) Environment example file not required in image
 
 # Change ownership to non-root user
 RUN chown -R breez:breez /app
