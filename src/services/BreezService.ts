@@ -1,22 +1,27 @@
 import { BreezConfig, WalletInfo, PaymentInfo, SignatureResult } from '../types';
 import { ConfigManager } from '../config/ConfigManager';
-
-// Note: This is a mock implementation since the exact Breez SDK Liquid API might differ
-// In a real implementation, you would import the actual Breez SDK
-interface BreezSDK {
-  init(config: any): Promise<void>;
-  getBalance(): Promise<number>;
-  generateInvoice(amount: number, description?: string): Promise<string>;
-  payInvoice(invoice: string): Promise<string>;
-  listPayments(): Promise<any[]>;
-  signMessage(message: string): Promise<{ signature: string; publicKey: string }>;
-  verifyMessage(message: string, signature: string, publicKey: string): Promise<boolean>;
-  getReceiveAddress(): Promise<string>;
-}
+import { 
+  connect, 
+  defaultConfig, 
+  BindingLiquidSdk, 
+  LiquidNetwork,
+  Config,
+  ConnectRequest,
+  PrepareReceiveRequest,
+  ReceivePaymentRequest,
+  PaymentMethod,
+  PrepareSendRequest,
+  SendPaymentRequest,
+  ListPaymentsRequest,
+  SignMessageRequest,
+  CheckMessageRequest,
+  GetInfoResponse,
+  Payment
+} from '@breeztech/breez-sdk-liquid/node';
 
 export class BreezService {
   private static instance: BreezService;
-  private sdk: BreezSDK | null = null;
+  private sdk: BindingLiquidSdk | null = null;
   private isInitialized = false;
   private configManager: ConfigManager;
 
@@ -39,14 +44,20 @@ export class BreezService {
     try {
       const config = await this.configManager.loadConfig();
       
-      // Mock SDK initialization - replace with actual Breez SDK
-      this.sdk = await this.createMockSDK(config);
-      await this.sdk.init({
-        apiKey: config.sdkKey,
-        mnemonic: config.mnemonic,
-        network: config.network || 'testnet'
-      });
-
+      // Create Breez SDK configuration
+      const network = this.mapNetworkToLiquidNetwork(config.network || 'testnet');
+      const breezConfig: Config = defaultConfig(network, config.sdkKey);
+      
+      // Set working directory for the SDK
+      breezConfig.workingDir = './breez-data';
+      
+      // Connect to the Breez SDK
+      const connectRequest: ConnectRequest = {
+        config: breezConfig,
+        mnemonic: config.mnemonic
+      };
+      
+      this.sdk = await connect(connectRequest);
       this.isInitialized = true;
       console.log('Breez SDK initialized successfully');
     } catch (error) {
@@ -58,59 +69,107 @@ export class BreezService {
   public async getBalance(): Promise<WalletInfo> {
     await this.ensureInitialized();
     
-    const balance = await this.sdk!.getBalance();
-    const address = await this.sdk!.getReceiveAddress();
+    const info: GetInfoResponse = await this.sdk!.getInfo();
     
     return {
-      balance,
-      address
+      balance: info.walletInfo.balanceSat,
+      address: info.walletInfo.pubkey // Using pubkey as address for now
     };
   }
 
   public async createInvoice(amount: number, description?: string): Promise<string> {
     await this.ensureInitialized();
     
-    return await this.sdk!.generateInvoice(amount, description);
+    // Prepare receive payment request
+    const prepareRequest: PrepareReceiveRequest = {
+      paymentMethod: 'lightning' as PaymentMethod,
+      amount: {
+        type: 'bitcoin',
+        payerAmountSat: amount
+      }
+    };
+    
+    const prepareResponse = await this.sdk!.prepareReceivePayment(prepareRequest);
+    
+    // Create the actual invoice
+    const receiveRequest: ReceivePaymentRequest = {
+      prepareResponse,
+      description
+    };
+    
+    const receiveResponse = await this.sdk!.receivePayment(receiveRequest);
+    return receiveResponse.destination;
   }
 
   public async payInvoice(invoice: string): Promise<string> {
     await this.ensureInitialized();
     
-    return await this.sdk!.payInvoice(invoice);
+    // Prepare send payment request
+    const prepareRequest: PrepareSendRequest = {
+      destination: invoice
+    };
+    
+    const prepareResponse = await this.sdk!.prepareSendPayment(prepareRequest);
+    
+    // Send the payment
+    const sendRequest: SendPaymentRequest = {
+      prepareResponse
+    };
+    
+    const sendResponse = await this.sdk!.sendPayment(sendRequest);
+    return sendResponse.payment.txId || 'payment_sent';
   }
 
   public async listPayments(): Promise<PaymentInfo[]> {
     await this.ensureInitialized();
     
-    const payments = await this.sdk!.listPayments();
+    const listRequest: ListPaymentsRequest = {
+      limit: 100 // Limit to 100 recent payments
+    };
+    
+    const payments = await this.sdk!.listPayments(listRequest);
     
     // Transform SDK response to our PaymentInfo format
-    return payments.map(payment => ({
-      id: payment.id || crypto.randomUUID(),
-      amount: payment.amount || 0,
-      description: payment.description,
-      timestamp: payment.timestamp || Date.now(),
-      type: payment.type || 'incoming',
-      status: payment.status || 'completed'
+    return payments.map((payment: Payment) => ({
+      id: payment.txId || crypto.randomUUID(),
+      amount: payment.amountSat,
+      description: this.extractDescription(payment),
+      timestamp: payment.timestamp,
+      type: payment.paymentType === 'receive' ? 'incoming' : 'outgoing',
+      status: this.mapPaymentState(payment.status)
     }));
   }
 
   public async signMessage(message: string): Promise<SignatureResult> {
     await this.ensureInitialized();
     
-    const result = await this.sdk!.signMessage(message);
+    const signRequest: SignMessageRequest = {
+      message
+    };
+    
+    const result = this.sdk!.signMessage(signRequest);
+    
+    // Get wallet info to obtain the public key
+    const info = await this.sdk!.getInfo();
     
     return {
       signature: result.signature,
       message,
-      publicKey: result.publicKey
+      publicKey: info.walletInfo.pubkey
     };
   }
 
   public async verifyMessage(message: string, signature: string, publicKey: string): Promise<boolean> {
     await this.ensureInitialized();
     
-    return await this.sdk!.verifyMessage(message, signature, publicKey);
+    const checkRequest: CheckMessageRequest = {
+      message,
+      signature,
+      pubkey: publicKey
+    };
+    
+    const result = this.sdk!.checkMessage(checkRequest);
+    return result.isValid;
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -119,78 +178,37 @@ export class BreezService {
     }
   }
 
-  // Mock SDK implementation - replace with actual Breez SDK import
-  private async createMockSDK(config: BreezConfig): Promise<BreezSDK> {
-    return {
-      async init(initConfig: any): Promise<void> {
-        console.log('Mock SDK initialized with config:', {
-          hasApiKey: !!initConfig.apiKey,
-          hasMnemonic: !!initConfig.mnemonic,
-          network: initConfig.network
-        });
-      },
+  // Helper methods for the real Breez SDK
+  private mapNetworkToLiquidNetwork(network: string): LiquidNetwork {
+    switch (network.toLowerCase()) {
+      case 'mainnet':
+        return 'mainnet';
+      case 'testnet':
+        return 'testnet';
+      case 'regtest':
+        return 'regtest';
+      default:
+        return 'testnet';
+    }
+  }
 
-      async getBalance(): Promise<number> {
-        // Mock balance - in real implementation, this would call the actual SDK
-        return Math.floor(Math.random() * 1000000); // Random balance in satoshis
-      },
+  private extractDescription(payment: Payment): string {
+    if (payment.details?.description) {
+      return payment.details.description;
+    }
+    return 'Lightning payment';
+  }
 
-      async generateInvoice(amount: number, description?: string): Promise<string> {
-        // Mock invoice generation
-        const invoice = `lnbc${amount}u1p${Math.random().toString(36).substring(2)}`;
-        console.log(`Generated invoice for ${amount} sats: ${invoice}`);
-        return invoice;
-      },
-
-      async payInvoice(invoice: string): Promise<string> {
-        // Mock payment
-        const crypto = require('crypto');
-        const paymentId = crypto.randomUUID();
-        console.log(`Paid invoice ${invoice}, payment ID: ${paymentId}`);
-        return paymentId;
-      },
-
-      async listPayments(): Promise<any[]> {
-        // Mock payment history
-        const crypto = require('crypto');
-        return [
-          {
-            id: crypto.randomUUID(),
-            amount: 50000,
-            description: 'Test payment',
-            timestamp: Date.now() - 86400000,
-            type: 'incoming',
-            status: 'completed'
-          },
-          {
-            id: crypto.randomUUID(),
-            amount: 25000,
-            description: 'Outgoing payment',
-            timestamp: Date.now() - 3600000,
-            type: 'outgoing',
-            status: 'completed'
-          }
-        ];
-      },
-
-      async signMessage(message: string): Promise<{ signature: string; publicKey: string }> {
-        // Mock message signing
-        const crypto = require('crypto');
-        const signature = Buffer.from(message + 'mock_signature').toString('hex');
-        const publicKey = '02' + crypto.randomBytes(32).toString('hex');
-        return { signature, publicKey };
-      },
-
-      async verifyMessage(message: string, signature: string, publicKey: string): Promise<boolean> {
-        // Mock verification - in real implementation, this would verify the signature
-        return signature.includes(message);
-      },
-
-      async getReceiveAddress(): Promise<string> {
-        // Mock address generation
-        const crypto = require('crypto');
-        return 'tb1q' + crypto.randomBytes(20).toString('hex').substring(0, 32);
-      }
-    };
+  private mapPaymentState(state: string): 'pending' | 'completed' | 'failed' {
+    switch (state) {
+      case 'complete':
+        return 'completed';
+      case 'pending':
+        return 'pending';
+      case 'failed':
+        return 'failed';
+      default:
+        return 'pending';
+    }
   }
 }
