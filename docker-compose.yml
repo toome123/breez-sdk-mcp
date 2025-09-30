@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  breez-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: breez-mcp-server
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    volumes:
+      # Mount config directory to persist encrypted configuration
+      - ./data:/app/data:rw
+    networks:
+      - breez-network
+    # For STDIO-based MCP, we don't expose ports
+    # If you need HTTP-based MCP, uncomment the following:
+    # ports:
+    #   - "3000:3000"
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+
+networks:
+  breez-network:
+    driver: bridge
