@@ -19,94 +19,12 @@ export class BreezMCPServer {
       },
       {
         capabilities: {
-          tools: {
-            get_balance: {
-              description: 'Get wallet balance and receive address',
-              inputSchema: {
-                type: 'object',
-                properties: {},
-                required: [],
-              },
-            },
-            create_invoice: {
-              description: 'Create a payment invoice for receiving payments',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  amount: {
-                    type: 'number',
-                    description: 'Amount in satoshis',
-                  },
-                  description: {
-                    type: 'string',
-                    description: 'Optional description for the invoice',
-                  },
-                },
-                required: ['amount'],
-              },
-            },
-            pay_invoice: {
-              description: 'Pay a Lightning invoice',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  invoice: {
-                    type: 'string',
-                    description: 'Lightning invoice to pay',
-                  },
-                },
-                required: ['invoice'],
-              },
-            },
-            list_payments: {
-              description: 'List payment history',
-              inputSchema: {
-                type: 'object',
-                properties: {},
-                required: [],
-              },
-            },
-            sign_message: {
-              description: 'Sign a message with the wallet private key',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  message: {
-                    type: 'string',
-                    description: 'Message to sign',
-                  },
-                },
-                required: ['message'],
-              },
-            },
-            verify_message: {
-              description: 'Verify a signed message',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  message: {
-                    type: 'string',
-                    description: 'Message to verify',
-                  },
-                  signature: {
-                    type: 'string',
-                    description: 'Signature to verify',
-                  },
-                  publicKey: {
-                    type: 'string',
-                    description: 'Public key to verify',
-                  },
-                },
-                required: ['message', 'signature', 'publicKey'],
-              },
-            },
-          },
+          tools: {},
         },
       }
     );
 
     this.breezService = BreezService.getInstance();
-
     this.setupToolHandlers();
   }
 
@@ -120,17 +38,8 @@ export class BreezMCPServer {
             description: 'Get wallet balance and receive address',
             inputSchema: {
               type: 'object',
-              properties: {
-                amount: {
-                  type: 'number',
-                  description: 'Amount in satoshis',
-                },
-                description: {
-                  type: 'string',
-                  description: 'Optional description for the invoice',
-                },
-              },
-              required: ['amount'],
+              properties: {},
+              required: [],
             },
           },
           {
@@ -170,13 +79,8 @@ export class BreezMCPServer {
             description: 'List payment history',
             inputSchema: {
               type: 'object',
-              properties: {
-                message: {
-                  type: 'string',
-                  description: 'Message to sign',
-                },
-              },
-              required: ['message'],
+              properties: {},
+              required: [],
             },
           },
           {
