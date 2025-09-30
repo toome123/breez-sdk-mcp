@@ -3,7 +3,8 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
 import { BreezConfig } from '../types';
-
+import { generateMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english";
 dotenv.config();
 
 export class ConfigManager {
@@ -15,16 +16,16 @@ export class ConfigManager {
 
   private constructor() {
     this.configPath = path.join(process.cwd(), 'config.enc');
-    
+
     const keyHex = process.env.ENCRYPTION_KEY;
     if (!keyHex) {
       throw new Error('ENCRYPTION_KEY environment variable is required');
     }
-    
+
     if (keyHex.length !== 64) {
       throw new Error('ENCRYPTION_KEY must be 64 characters (32 bytes) hex string');
     }
-    
+
     this.encryptionKey = Buffer.from(keyHex, 'hex');
   }
 
@@ -54,49 +55,53 @@ export class ConfigManager {
   public async saveConfig(config: BreezConfig): Promise<void> {
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(this.algorithm, this.encryptionKey, iv);
-    
+
     let encrypted = cipher.update(JSON.stringify(config, null, 2));
     encrypted = Buffer.concat([encrypted, cipher.final()]);
-    
+
     const encryptedData = iv.toString('hex') + ':' + encrypted.toString('hex');
     fs.writeFileSync(this.configPath, encryptedData, 'utf8');
-    
+
     this.config = config;
   }
 
   private async decryptConfig(): Promise<BreezConfig> {
     const data = fs.readFileSync(this.configPath, 'utf8');
     const [ivHex, encryptedData] = data.split(':');
-    
+
     if (!ivHex || !encryptedData) {
       throw new Error('Invalid encrypted config file format');
     }
-    
+
     const iv = Buffer.from(ivHex, 'hex');
     const encryptedText = Buffer.from(encryptedData, 'hex');
-    
+
     const decipher = crypto.createDecipheriv(this.algorithm, this.encryptionKey, iv);
     let decrypted = decipher.update(encryptedText);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
-    
+
     return JSON.parse(decrypted.toString());
   }
 
   private async generateNewConfig(): Promise<BreezConfig> {
     // Generate a 12-word mnemonic
-    const mnemonic = this.generateMnemonic();
-    
+    // const mnemonic = this.generateMnemonic();
+    let mnemonic = '';
+    if (!process.env.MNEMONIC) {
+      mnemonic = this.generateMnemonic();
+    } else {
+      mnemonic = process.env.MNEMONIC;
+    }
     return {
       sdkKey: process.env.BREEZ_API_KEY || '',
       mnemonic,
-      network: 'testnet'
+      network: process.env.NETWORK as 'mainnet' | 'testnet'
     };
   }
 
-  private generateMnemonic(): string {
+  public generateMnemonic(): string {
     // Use proper BIP39 mnemonic generation
-    const bip39 = require('bip39');
-    return bip39.generateMnemonic();
+    return generateMnemonic(wordlist);
   }
 
   public getConfig(): BreezConfig | null {
@@ -107,7 +112,7 @@ export class ConfigManager {
     if (!this.config) {
       throw new Error('Config not loaded. Call loadConfig() first.');
     }
-    
+
     this.config = { ...this.config, ...updates };
     await this.saveConfig(this.config);
   }
