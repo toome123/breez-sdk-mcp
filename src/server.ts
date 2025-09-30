@@ -253,12 +253,16 @@ export class BreezMCPServer {
   }
 
   public async start(): Promise<void> {
-    // Initialize Breez service
-    await this.breezService.initialize();
-
-    // Start the server
+    // Start the server transport first so tools are visible even if SDK init fails
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.error('Breez SDK MCP Server started');
+
+    // Initialize Breez service in the background (non-blocking)
+    this.breezService
+      .initialize()
+      .catch((error) => {
+        console.error('Failed to initialize Breez SDK:', error);
+      });
   }
 }

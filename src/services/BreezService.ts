@@ -1,5 +1,8 @@
 import { BreezConfig, WalletInfo, PaymentInfo, SignatureResult } from '../types';
 import { ConfigManager } from '../config/ConfigManager';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
 import { 
   connect, 
   defaultConfig, 
@@ -48,8 +51,13 @@ export class BreezService {
       const network = this.mapNetworkToLiquidNetwork(config.network || 'testnet');
       const breezConfig: Config = defaultConfig(network, config.sdkKey);
       
-      // Set working directory for the SDK
-      breezConfig.workingDir = './breez-data';
+      // Resolve and ensure working directory for the SDK
+      const defaultWorkingDir = path.resolve(__dirname, '../../breez-data');
+      const workingDir = process.env.BREEZ_WORKDIR ? process.env.BREEZ_WORKDIR : defaultWorkingDir;
+      if (!fs.existsSync(workingDir)) {
+        fs.mkdirSync(workingDir, { recursive: true });
+      }
+      breezConfig.workingDir = workingDir;
       
       // Connect to the Breez SDK
       const connectRequest: ConnectRequest = {
@@ -147,7 +155,7 @@ export class BreezService {
       message
     };
     
-    const result = this.sdk!.signMessage(signRequest);
+    const result = await this.sdk!.signMessage(signRequest);
     
     // Get wallet info to obtain the public key
     const info = await this.sdk!.getInfo();
@@ -168,7 +176,7 @@ export class BreezService {
       pubkey: publicKey
     };
     
-    const result = this.sdk!.checkMessage(checkRequest);
+    const result = await this.sdk!.checkMessage(checkRequest);
     return result.isValid;
   }
 
