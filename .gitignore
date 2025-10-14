@@ -6,4 +6,3 @@ config.enc
 .DS_Store
 breez-data/
 config.enc
-package-lock.json
