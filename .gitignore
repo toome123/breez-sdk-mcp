@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+config.enc
+*.log
+.DS_Store
+breez-data/
+config.enc
+package-lock.json
