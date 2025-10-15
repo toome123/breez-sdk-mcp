@@ -21,15 +21,16 @@ import {
   CheckMessageRequest,
   GetInfoResponse,
   Payment,
-  PayAmount
+  PayAmount,
+  SdkEvent
 } from '@breeztech/breez-sdk-liquid/node';
 
 export class BreezService {
   private static instance: BreezService;
   private sdk: BindingLiquidSdk | null = null;
   private isInitialized = false;
+  private synced = false;
   private configManager: ConfigManager;
-
   private constructor() {
     this.configManager = ConfigManager.getInstance();
   }
@@ -69,6 +70,13 @@ export class BreezService {
       };
 
       this.sdk = await connect(connectRequest);
+      this.sdk.addEventListener({
+        onEvent: (e: SdkEvent) => {
+          if (e.type === 'synced') {
+            this.synced = true;
+          }
+        }
+      });
       this.isInitialized = true;
       console.log('Breez SDK initialized successfully');
     } catch (error) {
@@ -77,7 +85,7 @@ export class BreezService {
   }
 
   public async getBalance(): Promise<WalletInfo> {
-    await this.ensureInitialized();
+    await this.ensureIsReady();
 
     const info: GetInfoResponse = await this.sdk!.getInfo();
 
@@ -88,7 +96,7 @@ export class BreezService {
   }
 
   public async createInvoice(amount: number, description?: string): Promise<string> {
-    await this.ensureInitialized();
+    await this.ensureIsReady();
 
     // Prepare receive payment request
     const prepareRequest: PrepareReceiveRequest = {
@@ -112,7 +120,7 @@ export class BreezService {
   }
 
   public async payInvoice(invoice: string): Promise<string> {
-    await this.ensureInitialized();
+    await this.ensureIsReady();
 
     // Prepare send payment request
     const prepareRequest: PrepareSendRequest = {
@@ -131,7 +139,7 @@ export class BreezService {
   }
 
   public async payLnurlPayAddress(lnurlPayUrl: string, amount: number, comment: string = ''): Promise<'payment_sent' | 'payment_failed'> {
-    await this.ensureInitialized();
+    await this.ensureIsReady();
 
     const input = await this.sdk!.parse(lnurlPayUrl)
     if (input.type === 'lnUrlPay') {
@@ -160,7 +168,7 @@ export class BreezService {
   }
 
   public async listPayments(): Promise<PaymentInfo[]> {
-    await this.ensureInitialized();
+    await this.ensureIsReady();
 
     const listRequest: ListPaymentsRequest = {
       limit: 100 // Limit to 100 recent payments
@@ -180,7 +188,7 @@ export class BreezService {
   }
 
   public async signMessage(message: string): Promise<SignatureResult> {
-    await this.ensureInitialized();
+    await this.ensureIsReady();
 
     const signRequest: SignMessageRequest = {
       message
@@ -199,7 +207,7 @@ export class BreezService {
   }
 
   public async verifyMessage(message: string, signature: string, publicKey: string): Promise<boolean> {
-    await this.ensureInitialized();
+    await this.ensureIsReady();
 
     const checkRequest: CheckMessageRequest = {
       message,
@@ -211,9 +219,13 @@ export class BreezService {
     return result.isValid;
   }
 
-  private async ensureInitialized(): Promise<void> {
+  private async ensureIsReady(): Promise<void> {
     if (!this.isInitialized) {
       await this.initialize();
+    }
+    if (!this.synced) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await this.ensureIsReady();
     }
   }
 
