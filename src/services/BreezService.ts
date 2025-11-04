@@ -78,7 +78,6 @@ export class BreezService {
         }
       });
       this.isInitialized = true;
-      console.log('Breez SDK initialized successfully');
     } catch (error) {
       console.error('Failed to initialize Breez SDK:', error);
     }
